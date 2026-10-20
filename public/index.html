@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>OpenCode 会话阅读器</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/>
+            <path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20"/>
+            <path d="M8 7h8M8 10.5h6"/>
+          </svg>
+        </span>
+        <span class="brand-name">OpenCode Reader</span>
+      </div>
+
+      <div class="db-info" id="db-info" title="正在读取数据库路径">
+        <span class="db-dot"></span>
+        <code id="db-path">…</code>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="text-btn" id="refresh-btn" type="button" title="重新读取数据库">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+            <path d="M21 3v6h-6"/>
+          </svg>
+          <span>刷新</span>
+        </button>
+        <button class="icon-btn" id="theme-btn" type="button" title="切换主题" aria-label="切换主题"></button>
+      </div>
+    </header>
+
+    <main class="workspace" id="workspace">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-search">
+          <div class="search-modes" role="tablist" aria-label="搜索模式">
+            <button class="mode-tab active" id="mode-tree" type="button" role="tab" aria-selected="true">目录</button>
+            <button class="mode-tab" id="mode-global" type="button" role="tab" aria-selected="false">全局搜索</button>
+          </div>
+          <div class="search-field">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"/>
+              <path d="m20 20-3.5-3.5"/>
+            </svg>
+            <input id="tree-search" type="text" placeholder="搜索会话、目录、ID…" autocomplete="off" spellcheck="false">
+            <button class="clear-btn" id="tree-clear" type="button" title="清空搜索" aria-label="清空搜索" hidden>×</button>
+          </div>
+        </div>
+
+        <div class="tree" id="tree" role="tree" aria-label="会话目录"></div>
+        <div class="search-results" id="search-results" hidden></div>
+
+        <footer class="sidebar-footer">
+          <span id="tree-stats">正在加载…</span>
+          <span class="hint" id="sidebar-hint" title="Ctrl+K 搜索当前会话内容">Ctrl+K 搜对话</span>
+        </footer>
+      </aside>
+
+      <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="调整侧栏宽度" tabindex="0"></div>
+
+      <section class="viewer" id="viewer">
+        <div class="session-head is-empty" id="session-head">
+          <div class="head-empty">
+            <div class="head-empty-title">未选择会话</div>
+            <div class="head-empty-sub">从左侧目录中选择一个会话开始阅读</div>
+          </div>
+        </div>
+
+        <div class="findbar" id="findbar" hidden>
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"/>
+            <path d="m20 20-3.5-3.5"/>
+          </svg>
+          <input id="content-search" type="text" placeholder="在当前会话中搜索…" autocomplete="off" spellcheck="false">
+          <span class="find-count" id="find-count"></span>
+          <button class="icon-btn small" id="find-prev" type="button" title="上一个匹配 (Shift+Enter)" aria-label="上一个匹配">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
+          </button>
+          <button class="icon-btn small" id="find-next" type="button" title="下一个匹配 (Enter)" aria-label="下一个匹配">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <button class="icon-btn small" id="find-close" type="button" title="清空搜索" aria-label="清空搜索">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+
+        <div class="conversation" id="conversation">
+          <div class="welcome">
+            <div class="welcome-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/>
+                <path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20"/>
+                <path d="M8 7h8M8 10.5h6M8 14h4"/>
+              </svg>
+            </div>
+            <h2>OpenCode 会话阅读器</h2>
+            <p>左侧按目录列出所有 OpenCode 会话，选择一个会话即可在这里阅读完整对话。</p>
+            <div class="welcome-tips">
+              <span><kbd>Ctrl</kbd> + <kbd>K</kbd> 搜索对话</span>
+              <span><kbd>/</kbd> 搜索会话</span>
+              <span>左侧「全局搜索」可搜索所有对话</span>
+              <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F</kbd> 全局搜索</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/purify.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "opencode-reader",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A local reading UI for the OpenCode SQLite database",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "dev": "node --watch --disable-warning=ExperimentalWarning server.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
