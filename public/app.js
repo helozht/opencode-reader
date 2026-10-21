@@ -27,6 +27,12 @@
     findPrev: $('#find-prev'),
     findNext: $('#find-next'),
     findClose: $('#find-close'),
+    questionsPanel: $('#questions-panel'),
+    questionsBackdrop: $('#questions-backdrop'),
+    questionsClose: $('#questions-close'),
+    questionsFilter: $('#questions-filter'),
+    questionsList: $('#questions-list'),
+    questionsCount: $('#questions-count'),
   };
 
   const WELCOME_HTML = els.conversation.innerHTML;
@@ -53,6 +59,9 @@
       controller: null,
     },
     searchSeq: 0,
+    turns: [],
+    turnFilter: '',
+    questionsOpen: false,
     abortController: null,
     find: {
       query: '',
@@ -83,6 +92,8 @@
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
     moon:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2z"/></svg>',
+    list:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.2" cy="6" r="1.2"/><circle cx="4.2" cy="12" r="1.2"/><circle cx="4.2" cy="18" r="1.2"/></svg>',
   };
 
   function escapeHtml(value) {
@@ -135,6 +146,10 @@
     return String(value).replace(/\s+/g, ' ').trim();
   }
 
+  function previewText(value, length) {
+    return truncate(oneLine(value), length);
+  }
+
   function pretty(value) {
     if (typeof value === 'string') return value;
     try {
@@ -168,6 +183,13 @@
     const date = new Date(ms);
     const pad = (value) => String(value).padStart(2, '0');
     return `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+
+  function formatListTime(ms) {
+    if (!ms) return '';
+    const date = new Date(ms);
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
   }
 
   function formatDuration(ms) {
@@ -1033,9 +1055,171 @@
     return html;
   }
 
+  /* ---------------- question navigator ---------------- */
+
+  function messageText(message) {
+    return (message.parts || [])
+      .filter(
+        (part) =>
+          part.data?.type === 'text' &&
+          !part.data?.synthetic &&
+          String(part.data.text || '').trim(),
+      )
+      .map((part) => String(part.data.text).trim())
+      .join('\n\n');
+  }
+
+  function buildTurns(messages) {
+    const turns = [];
+    let current = null;
+
+    for (const message of messages) {
+      const role = message.data?.role;
+      const created = message.data?.time?.created || message.time_created || 0;
+
+      if (role === 'user') {
+        const text = messageText(message);
+        if (!text) continue;
+
+        current = {
+          index: turns.length + 1,
+          userMessageId: message.id,
+          time: created,
+          question: text,
+          answer: '',
+          answerTexts: [],
+          answerMessageId: null,
+          answerTime: 0,
+        };
+        turns.push(current);
+      } else if (role === 'assistant' && current) {
+        const text = messageText(message);
+        if (!text) continue;
+
+        if (!current.answerMessageId) current.answerMessageId = message.id;
+        current.answerTexts.push(text);
+        current.answer = current.answer ? `${current.answer}\n\n${text}` : text;
+        if (!current.answerTime) current.answerTime = created;
+      }
+    }
+
+    for (const turn of turns) {
+      turn.questionPreview = previewText(turn.question, 220);
+      turn.answerPreview = turn.answer
+        ? previewText(turn.answerTexts[turn.answerTexts.length - 1] || turn.answer, 260)
+        : '';
+      turn.searchText = `${turn.question}\n${turn.answer}`.toLowerCase();
+    }
+
+    return turns;
+  }
+
+  function renderQuestionList() {
+    const total = state.turns.length;
+    const filter = state.turnFilter;
+    const filtered = filter
+      ? state.turns.filter((turn) => turn.searchText.includes(filter))
+      : state.turns;
+
+    els.questionsCount.textContent = filter ? `${filtered.length}/${total}` : String(total);
+
+    if (!total) {
+      els.questionsList.innerHTML =
+        '<div class="questions-empty">这个会话还没有你的提问</div>';
+      return;
+    }
+
+    if (!filtered.length) {
+      els.questionsList.innerHTML =
+        `<div class="questions-empty">没有匹配 “${escapeHtml(els.questionsFilter.value.trim())}” 的提问</div>`;
+      return;
+    }
+
+    els.questionsList.innerHTML = filtered
+      .map((turn) => {
+        const question = filter
+          ? highlightHtml(turn.questionPreview, filter, 'turn-hit')
+          : escapeHtml(turn.questionPreview);
+        const answer = turn.answer
+          ? filter
+            ? highlightHtml(turn.answerPreview, filter, 'turn-hit')
+            : escapeHtml(turn.answerPreview)
+          : '<span class="turn-no-answer">（该轮回复暂无文本内容）</span>';
+        const meta = `${formatListTime(turn.time)} · ${turn.answer ? '已回复' : '未回复'}`;
+
+        return (
+          `<button class="turn-item" type="button" data-user-id="${escapeAttr(turn.userMessageId)}" title="跳转到这条提问，回复紧随其后">` +
+          `<span class="turn-index">${String(turn.index).padStart(2, '0')}</span>` +
+          '<span class="turn-content">' +
+          `<span class="turn-meta">${escapeHtml(meta)}</span>` +
+          `<span class="turn-question">${question}</span>` +
+          `<span class="turn-answer">${answer}</span>` +
+          '</span>' +
+          '</button>'
+        );
+      })
+      .join('');
+  }
+
+  function openQuestionsPanel() {
+    if (!state.turns.length) return;
+    state.questionsOpen = true;
+    els.questionsPanel.hidden = false;
+    els.questionsBackdrop.hidden = false;
+    renderQuestionList();
+    window.requestAnimationFrame(() => {
+      els.questionsFilter.focus();
+      els.questionsFilter.select();
+    });
+  }
+
+  function closeQuestionsPanel(options = {}) {
+    if (!state.questionsOpen) return;
+    state.questionsOpen = false;
+    els.questionsPanel.hidden = true;
+    els.questionsBackdrop.hidden = true;
+    if (options.restoreFocus !== false) {
+      els.sessionHead.querySelector('#questions-btn')?.focus();
+    }
+  }
+
+  function toggleQuestionsPanel() {
+    if (state.questionsOpen) closeQuestionsPanel();
+    else openQuestionsPanel();
+  }
+
+  function scrollConversationTo(element) {
+    const container = els.conversation;
+    const top =
+      element.getBoundingClientRect().top -
+      container.getBoundingClientRect().top +
+      container.scrollTop -
+      14;
+    container.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+  }
+
+  function jumpToTurn(userMessageId) {
+    const target = querySelectorForId('data-message-id', userMessageId);
+    if (!target) return;
+
+    closeQuestionsPanel({ restoreFocus: false });
+    scrollConversationTo(target);
+    flashElement(target);
+
+    let sibling = target.nextElementSibling;
+    while (sibling) {
+      if (sibling.classList?.contains('msg-user')) break;
+      if (sibling.classList?.contains('msg-assistant')) {
+        flashElement(sibling);
+        break;
+      }
+      sibling = sibling.nextElementSibling;
+    }
+  }
+
   /* ---------------- session rendering ---------------- */
 
-  function sessionHeaderHtml(session, messageCount) {
+  function sessionHeaderHtml(session, messageCount, turnCount) {
     const model = modelLabel(session.model);
     const tokenTotal =
       (Number(session.tokens_input) || 0) +
@@ -1046,8 +1230,17 @@
       `推理 ${session.tokens_reasoning || 0} · 缓存读 ${session.tokens_cache_read || 0} · ` +
       `缓存写 ${session.tokens_cache_write || 0}`;
 
+    const questionsButton = turnCount
+      ? `<button class="session-action" id="questions-btn" type="button" aria-haspopup="dialog" title="跳转到我的提问 (Ctrl+Shift+Q)">` +
+        `${ICONS.list}<span>我的提问</span><span class="action-count">${turnCount}</span>` +
+        '</button>'
+      : '';
+
     return (
+      '<div class="session-title-row">' +
       `<h1 class="session-title">${escapeHtml(session.title || '(无标题会话)')}</h1>` +
+      questionsButton +
+      '</div>' +
       '<div class="session-meta">' +
       `<span class="meta-item" title="${escapeAttr(session.directory || '')}">${ICONS.folder}<span class="ellipsis">${escapeHtml(session.directory || '')}</span></span>` +
       '<span class="meta-sep"></span>' +
@@ -1073,9 +1266,16 @@
 
   function renderSession(payload) {
     const { session, messages } = payload;
+    const turns = buildTurns(messages);
+
+    closeQuestionsPanel({ restoreFocus: false });
+    state.turns = turns;
+    state.turnFilter = '';
+    els.questionsFilter.value = '';
+
     els.findbar.hidden = false;
     els.sessionHead.classList.remove('is-empty');
-    els.sessionHead.innerHTML = sessionHeaderHtml(session, messages.length);
+    els.sessionHead.innerHTML = sessionHeaderHtml(session, messages.length, turns.length);
 
     els.conversation.innerHTML =
       renderConversation(messages) ||
@@ -1088,11 +1288,15 @@
   }
 
   function setViewerLoading(summary) {
+    closeQuestionsPanel({ restoreFocus: false });
+    state.turns = [];
+    state.turnFilter = '';
+    els.questionsFilter.value = '';
     els.findbar.hidden = true;
     els.sessionHead.classList.remove('is-empty');
     if (summary) {
       els.sessionHead.innerHTML =
-        `<h1 class="session-title">${escapeHtml(summary.title || '(无标题会话)')}</h1>` +
+        `<div class="session-title-row"><h1 class="session-title">${escapeHtml(summary.title || '(无标题会话)')}</h1></div>` +
         '<div class="session-meta">' +
         `<span class="meta-item" title="${escapeAttr(summary.directory || '')}">${ICONS.folder}<span class="ellipsis">${escapeHtml(summary.directory || '')}</span></span>` +
         '</div>';
@@ -1105,10 +1309,14 @@
   }
 
   function showViewerError(error, summary) {
+    closeQuestionsPanel({ restoreFocus: false });
+    state.turns = [];
+    state.turnFilter = '';
+    els.questionsFilter.value = '';
     els.findbar.hidden = true;
     els.sessionHead.classList.remove('is-empty');
     els.sessionHead.innerHTML =
-      `<h1 class="session-title">${escapeHtml(summary?.title || '加载失败')}</h1>` +
+      `<div class="session-title-row"><h1 class="session-title">${escapeHtml(summary?.title || '加载失败')}</h1></div>` +
       '<div class="session-meta"><span class="meta-badge">无法读取会话</span></div>';
     els.conversation.innerHTML =
       '<div class="welcome">' +
@@ -1119,6 +1327,10 @@
   }
 
   function showWelcome() {
+    closeQuestionsPanel({ restoreFocus: false });
+    state.turns = [];
+    state.turnFilter = '';
+    els.questionsFilter.value = '';
     state.session = null;
     els.sessionHead.classList.add('is-empty');
     els.sessionHead.innerHTML = HEAD_EMPTY_HTML;
@@ -1600,6 +1812,27 @@
     els.modeTree.addEventListener('click', () => setSearchMode('tree'));
     els.modeGlobal.addEventListener('click', () => setSearchMode('global'));
 
+    els.sessionHead.addEventListener('click', (event) => {
+      if (event.target.closest('#questions-btn')) toggleQuestionsPanel();
+    });
+
+    els.questionsClose.addEventListener('click', () => closeQuestionsPanel());
+    els.questionsBackdrop.addEventListener('click', () => closeQuestionsPanel());
+    els.questionsFilter.addEventListener('input', () => {
+      state.turnFilter = els.questionsFilter.value.trim().toLowerCase();
+      renderQuestionList();
+    });
+    els.questionsFilter.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeQuestionsPanel();
+      }
+    });
+    els.questionsList.addEventListener('click', (event) => {
+      const item = event.target.closest('.turn-item');
+      if (item) jumpToTurn(item.dataset.userId);
+    });
+
     els.searchResults.addEventListener('click', (event) => {
       const snippet = event.target.closest('.result-snippet');
       if (snippet) {
@@ -1738,6 +1971,22 @@
         (target.tagName === 'INPUT' ||
           target.tagName === 'TEXTAREA' ||
           target.isContentEditable);
+
+      if (event.key === 'Escape' && state.questionsOpen) {
+        event.preventDefault();
+        closeQuestionsPanel();
+        return;
+      }
+
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === 'q'
+      ) {
+        event.preventDefault();
+        toggleQuestionsPanel();
+        return;
+      }
 
       if (
         (event.ctrlKey || event.metaKey) &&
