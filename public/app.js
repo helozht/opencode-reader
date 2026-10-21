@@ -1205,16 +1205,6 @@
     closeQuestionsPanel({ restoreFocus: false });
     scrollConversationTo(target);
     flashElement(target);
-
-    let sibling = target.nextElementSibling;
-    while (sibling) {
-      if (sibling.classList?.contains('msg-user')) break;
-      if (sibling.classList?.contains('msg-assistant')) {
-        flashElement(sibling);
-        break;
-      }
-      sibling = sibling.nextElementSibling;
-    }
   }
 
   /* ---------------- session rendering ---------------- */
