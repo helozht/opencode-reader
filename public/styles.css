@@ -426,6 +426,116 @@ body.resizing iframe {
   scrollbar-gutter: stable;
 }
 
+.session-list {
+  flex: 1;
+  overflow: auto;
+  padding: 6px;
+  scrollbar-gutter: stable;
+}
+
+.session-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.session-list-item:hover {
+  background: var(--panel-soft);
+}
+
+.session-list-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  box-shadow: inset 2.5px 0 0 var(--accent);
+}
+
+.session-list-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  border-radius: 7px;
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.session-list-item:hover .session-list-icon {
+  background: var(--panel-hover);
+}
+
+.session-list-item.active .session-list-icon {
+  background: var(--panel);
+  color: var(--accent);
+}
+
+.session-list-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.session-list-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-list-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.session-list-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-list-path {
+  overflow: hidden;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 9.8px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-list-time {
+  flex: none;
+  margin-top: 2px;
+  color: var(--faint);
+  font-size: 9.3px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.session-list-empty {
+  padding: 30px 16px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: center;
+}
+
 .tree-item {
   position: relative;
 }

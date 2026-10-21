@@ -11,8 +11,10 @@
     themeBtn: $('#theme-btn'),
     sidebar: $('#sidebar'),
     splitter: $('#splitter'),
+    modeSessions: $('#mode-sessions'),
     modeTree: $('#mode-tree'),
     modeGlobal: $('#mode-global'),
+    sessionList: $('#session-list'),
     tree: $('#tree'),
     searchResults: $('#search-results'),
     treeSearch: $('#tree-search'),
@@ -46,7 +48,8 @@
     selectedId: null,
     session: null,
     query: '',
-    searchMode: 'tree',
+    searchMode: 'sessions',
+    sessionSearchText: '',
     treeSearchText: '',
     globalSearchText: '',
     global: {
@@ -522,18 +525,84 @@
     }
   }
 
+  function updateSessionStats(count) {
+    if (state.searchMode !== 'sessions') return;
+    const total = state.sessions.length;
+    if (state.query) {
+      els.treeStats.textContent = `匹配 ${count} / ${total} 个会话`;
+    } else {
+      els.treeStats.textContent = `${total} 个会话 · 按更新时间排序`;
+    }
+  }
+
+  function renderSessionList() {
+    if (!state.tree) return;
+
+    const scrollTop = els.sessionList.scrollTop;
+    const query = state.query;
+    const sessions = query
+      ? state.sessions.filter((session) => session._search.includes(query))
+      : state.sessions;
+
+    if (!state.sessions.length) {
+      els.sessionList.innerHTML =
+        '<div class="session-list-empty">数据库中没有会话</div>';
+    } else if (!sessions.length) {
+      els.sessionList.innerHTML =
+        `<div class="session-list-empty">没有匹配 “${escapeHtml(els.treeSearch.value.trim())}” 的会话</div>`;
+    } else {
+      els.sessionList.innerHTML = sessions
+        .map((session) => {
+          const active = state.selectedId === session.id;
+          const title = highlightHtml(session.title || '(无标题)', query);
+          const path = highlightHtml(session.directory || '', query);
+          const sub = session.parent_id
+            ? '<span class="sub-badge" title="子代理会话">子</span>'
+            : '';
+          const tooltip = `${session.title || '(无标题)'}\n${session.directory || ''}\n${session.id}`;
+
+          return (
+            `<button class="session-list-item${active ? ' active' : ''}" type="button" role="listitem" data-id="${escapeAttr(session.id)}" title="${escapeAttr(tooltip)}">` +
+            `<span class="session-list-icon">${ICONS.chat}</span>` +
+            '<span class="session-list-main">' +
+            `<span class="session-list-title"><span class="session-list-title-text">${title}</span>${sub}</span>` +
+            `<span class="session-list-path">${path}</span>` +
+            '</span>' +
+            `<span class="session-list-time">${escapeHtml(formatListTime(session.time_updated))}</span>` +
+            '</button>'
+          );
+        })
+        .join('');
+    }
+
+    els.sessionList.scrollTop = scrollTop;
+    if (state.searchMode === 'sessions') updateSessionStats(sessions.length);
+  }
+
   function setModeUI(mode) {
+    const sessionsMode = mode === 'sessions';
     const treeMode = mode === 'tree';
+    const globalMode = mode === 'global';
+
+    els.modeSessions.classList.toggle('active', sessionsMode);
     els.modeTree.classList.toggle('active', treeMode);
-    els.modeGlobal.classList.toggle('active', !treeMode);
+    els.modeGlobal.classList.toggle('active', globalMode);
+    els.modeSessions.setAttribute('aria-selected', String(sessionsMode));
     els.modeTree.setAttribute('aria-selected', String(treeMode));
-    els.modeGlobal.setAttribute('aria-selected', String(!treeMode));
+    els.modeGlobal.setAttribute('aria-selected', String(globalMode));
+
+    els.sessionList.hidden = !sessionsMode;
     els.tree.hidden = !treeMode;
-    els.searchResults.hidden = treeMode;
-    els.treeSearch.placeholder = treeMode
-      ? '搜索会话、目录、ID…'
-      : '搜索所有会话内容…';
-    els.sidebarHint.textContent = treeMode ? 'Ctrl+K 搜对话' : 'Enter 打开首个结果';
+    els.searchResults.hidden = !globalMode;
+
+    els.treeSearch.placeholder = globalMode
+      ? '搜索所有会话内容…'
+      : '搜索会话、目录、ID…';
+    els.sidebarHint.textContent = globalMode
+      ? 'Enter 打开首个结果'
+      : sessionsMode
+        ? 'Enter 打开首个会话'
+        : 'Ctrl+K 搜对话';
   }
 
   function resultTypeLabel(snippet) {
@@ -739,8 +808,15 @@
     }
   }
 
+  function cancelGlobalSearchRequest() {
+    if (!state.global.controller) return;
+    state.global.controller.abort();
+    state.global.controller = null;
+    state.searchSeq += 1;
+  }
+
   function setSearchMode(mode, options = {}) {
-    if (mode !== 'tree' && mode !== 'global') return;
+    if (mode !== 'sessions' && mode !== 'tree' && mode !== 'global') return;
 
     if (state.searchMode === mode) {
       if (options.focus !== false) {
@@ -750,23 +826,29 @@
       return;
     }
 
-    if (state.searchMode === 'tree') state.treeSearchText = els.treeSearch.value;
+    if (state.searchMode === 'sessions') state.sessionSearchText = els.treeSearch.value;
+    else if (state.searchMode === 'tree') state.treeSearchText = els.treeSearch.value;
     else state.globalSearchText = els.treeSearch.value;
 
     state.searchMode = mode;
     setModeUI(mode);
 
     els.treeSearch.value =
-      mode === 'tree' ? state.treeSearchText : state.globalSearchText;
+      mode === 'sessions'
+        ? state.sessionSearchText
+        : mode === 'tree'
+          ? state.treeSearchText
+          : state.globalSearchText;
     els.treeClear.hidden = !els.treeSearch.value;
 
-    if (mode === 'tree') {
-      if (state.global.controller) {
-        state.global.controller.abort();
-        state.global.controller = null;
-        state.searchSeq += 1;
-      }
+    if (mode === 'sessions') {
+      cancelGlobalSearchRequest();
+      applySessionSearch();
+      if (state.selectedId) revealActive();
+    } else if (mode === 'tree') {
+      cancelGlobalSearchRequest();
       applyTreeSearch();
+      if (state.selectedId) revealActive();
     } else if (els.treeSearch.value.trim()) {
       runGlobalSearch(els.treeSearch.value);
     } else {
@@ -781,7 +863,9 @@
   }
 
   function revealActive() {
-    const row = els.tree.querySelector('.tree-row.session.active');
+    const row = state.searchMode === 'sessions'
+      ? els.sessionList.querySelector('.session-list-item.active')
+      : els.tree.querySelector('.tree-row.session.active');
     if (row) row.scrollIntoView({ block: 'nearest' });
   }
 
@@ -1334,7 +1418,9 @@
   /* ---------------- loading sessions ---------------- */
 
   async function loadTree() {
-    if (state.searchMode === 'tree') els.treeStats.textContent = '正在加载…';
+    if (state.searchMode === 'sessions' || state.searchMode === 'tree') {
+      els.treeStats.textContent = '正在加载…';
+    }
     const response = await fetch('/api/tree', { cache: 'no-store' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -1362,6 +1448,7 @@
 
     if (!state.expanded.size) autoExpandDefault();
     renderTree();
+    renderSessionList();
     if (state.searchMode === 'global') updateGlobalStats();
   }
 
@@ -1406,6 +1493,7 @@
 
     setViewerLoading(summary);
     renderTree();
+    renderSessionList();
     revealActive();
     resetFindUI(true);
 
@@ -1430,6 +1518,7 @@
       state.session = payload;
       renderSession(payload);
       renderTree();
+      renderSessionList();
       revealActive();
       if (focus) applyFocus(focus);
     } catch (error) {
@@ -1773,6 +1862,14 @@
   let globalSearchTimer = null;
   let findTimer = null;
 
+  function applySessionSearch() {
+    const value = els.treeSearch.value;
+    state.sessionSearchText = value;
+    state.query = value.trim().toLowerCase();
+    els.treeClear.hidden = !value;
+    renderSessionList();
+  }
+
   function applyTreeSearch() {
     const value = els.treeSearch.value;
     state.treeSearchText = value;
@@ -1787,7 +1884,9 @@
     window.clearTimeout(treeSearchTimer);
     window.clearTimeout(globalSearchTimer);
 
-    if (state.searchMode === 'tree') {
+    if (state.searchMode === 'sessions') {
+      applySessionSearch();
+    } else if (state.searchMode === 'tree') {
       applyTreeSearch();
     } else {
       state.globalSearchText = '';
@@ -1799,8 +1898,14 @@
   function bindEvents() {
     els.refreshBtn.addEventListener('click', refreshAll);
     els.themeBtn.addEventListener('click', toggleTheme);
+    els.modeSessions.addEventListener('click', () => setSearchMode('sessions'));
     els.modeTree.addEventListener('click', () => setSearchMode('tree'));
     els.modeGlobal.addEventListener('click', () => setSearchMode('global'));
+
+    els.sessionList.addEventListener('click', (event) => {
+      const item = event.target.closest('.session-list-item');
+      if (item?.dataset.id) openSession(item.dataset.id, { historyMode: 'push' });
+    });
 
     els.sessionHead.addEventListener('click', (event) => {
       if (event.target.closest('#questions-btn')) toggleQuestionsPanel();
@@ -1871,7 +1976,10 @@
       window.clearTimeout(treeSearchTimer);
       window.clearTimeout(globalSearchTimer);
 
-      if (state.searchMode === 'tree') {
+      if (state.searchMode === 'sessions') {
+        state.sessionSearchText = value;
+        treeSearchTimer = window.setTimeout(applySessionSearch, 120);
+      } else if (state.searchMode === 'tree') {
         state.treeSearchText = value;
         treeSearchTimer = window.setTimeout(applyTreeSearch, 120);
       } else {
@@ -1885,6 +1993,13 @@
         event.preventDefault();
         window.clearTimeout(treeSearchTimer);
         window.clearTimeout(globalSearchTimer);
+
+        if (state.searchMode === 'sessions') {
+          applySessionSearch();
+          const first = els.sessionList.querySelector('.session-list-item');
+          if (first) first.click();
+          return;
+        }
 
         if (state.searchMode === 'tree') {
           applyTreeSearch();
@@ -2014,7 +2129,7 @@
     initTheme();
     initSplitter();
     bindEvents();
-    setModeUI('tree');
+    setModeUI('sessions');
 
     try {
       await loadTree();
@@ -2029,8 +2144,11 @@
       }
     } catch (error) {
       els.treeStats.textContent = '加载失败';
-      els.tree.innerHTML =
+      const message =
         `<div class="tree-error">无法读取 OpenCode 数据库<br>${escapeHtml(error?.message || '未知错误')}</div>`;
+      els.tree.innerHTML = message;
+      els.sessionList.innerHTML =
+        `<div class="session-list-empty">无法读取 OpenCode 数据库<br>${escapeHtml(error?.message || '未知错误')}</div>`;
     }
   }
 

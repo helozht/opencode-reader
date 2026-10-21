@@ -42,7 +42,8 @@
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-search">
           <div class="search-modes" role="tablist" aria-label="搜索模式">
-            <button class="mode-tab active" id="mode-tree" type="button" role="tab" aria-selected="true">目录</button>
+            <button class="mode-tab active" id="mode-sessions" type="button" role="tab" aria-selected="true">会话</button>
+            <button class="mode-tab" id="mode-tree" type="button" role="tab" aria-selected="false">目录</button>
             <button class="mode-tab" id="mode-global" type="button" role="tab" aria-selected="false">全局搜索</button>
           </div>
           <div class="search-field">
@@ -55,7 +56,8 @@
           </div>
         </div>
 
-        <div class="tree" id="tree" role="tree" aria-label="会话目录"></div>
+        <div class="session-list" id="session-list" role="list" aria-label="会话列表"></div>
+        <div class="tree" id="tree" role="tree" aria-label="会话目录" hidden></div>
         <div class="search-results" id="search-results" hidden></div>
 
         <footer class="sidebar-footer">
@@ -102,7 +104,7 @@
               </svg>
             </div>
             <h2>OpenCode 会话阅读器</h2>
-            <p>左侧按目录列出所有 OpenCode 会话，选择一个会话即可在这里阅读完整对话。</p>
+            <p>左侧按会话或目录浏览所有 OpenCode 会话，选择一个会话即可在这里阅读完整对话。</p>
             <div class="welcome-tips">
               <span><kbd>Ctrl</kbd> + <kbd>K</kbd> 搜索对话</span>
               <span><kbd>/</kbd> 搜索会话</span>
